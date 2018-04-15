@@ -3,7 +3,7 @@ os.environ["KERAS_BACKEND"] = "tensorflow"
 import math
 import numpy as np
 import matplotlib.pyplot as plt
-import cPickle, random, sys, keras
+import random, sys, keras
 from keras.utils import np_utils
 import keras.models as models
 from keras.layers.core import Reshape,Dense,Dropout,Activation,Flatten
@@ -12,6 +12,7 @@ from keras.layers.convolutional import Conv2D, MaxPooling2D, ZeroPadding2D
 from keras.regularizers import *
 from keras.optimizers import adam
 from scipy.misc import imresize, imread
+from sklearn.model_selection import train_test_split
 
 data = []
 label = []
@@ -20,77 +21,49 @@ DIR = "/Users/guanyuchen/Desktop/Github/bird_classification_4940/bird_dataset"
 
 folders = os.listdir(DIR)
 
+map = {}
+index = 0
 for foldername in folders:
     if foldername.startswith("."):
-        continue
+        folders.remove(foldername)
 
+for foldername in folders:
+    print("working on "+foldername)
+    map[foldername] = index
+    index = index+1
+    if foldername.startswith("."):
+        continue
     files = os.listdir(DIR +"/" + foldername)
     for file in files:
         if not file.endswith(".jpg"):
-            files.remove(file)
+            continue
         else:
-            print file
             img = imread(DIR +"/" + foldername + "/" + file)
             img = imresize(img, (140, 140))
-
             data.append(img)
-            label.append(foldername)
+            label.append(map[foldername])
 
-print len(data)
-print len(label)
+print(len(data))
+print(len(label))
 
+X_train, X_test, Y_train, Y_test = train_test_split(data, label, test_size=0.2, shuffle=True)
 
-X_train = []
-X_test = []
-Y_train = []
-Y_test = []
+X_train = np.asarray(X_train)
+X_test = np.asarray(X_test)
+Y_train = np.asarray(Y_train)
+Y_test = np.asarray(Y_test)
 
-# Load the dataset
-#  from a certain local path
-Xd = cPickle.load(open("/Users/guanyuchen/Desktop/CORNELLACA/INFO 5901 Fall/MPS_Project/RML2016.10a_dict.dat",'rb'))
-print("Dataset imported")
-snrs,mods = map(lambda j: sorted(list(set(map(lambda x: x[j], Xd.keys())))), [1,0])
-X = []
-lbl = []
-for mod in mods:
-    for snr in snrs:
-        X.append(Xd[(mod,snr)])
-        for i in range(Xd[(mod,snr)].shape[0]):
-            lbl.append((mod,snr))
+Y_train = keras.utils.to_categorical(Y_train, len(folders))
+Y_test = keras.utils.to_categorical(Y_test, len(folders))
 
-X = np.vstack(X)
-
-# For dataset RML2016.10a_dict, we should have data size 220000*2*128
-print "Dataset formatted into shape: ",X.shape
-# print out the snrs and mods
-print "Dataset with SNRs: ",snrs
-print "Dataset with Modulations: ",mods
-print "Data prepared"
-
-
-
-
-# Partition the data
-#  into training and test sets of the form we can train/test on
-#  while keeping SNR and Mod labels handy for each
-np.random.seed(2017)
-n_examples = X.shape[0]
-n_train = int(n_examples * 0.5)
-train_idx = np.random.choice(range(0,n_examples), size=n_train, replace=False)
-test_idx = list(set(range(0,n_examples))-set(train_idx))
-X_train = X[train_idx]
-X_test =  X[test_idx]
-def to_onehot(yy):
-    yy1 = np.zeros([len(yy), max(yy)+1])
-    yy1[np.arange(len(yy)),yy] = 1
-    return yy1
-
-Y_train = to_onehot(map(lambda x: mods.index(lbl[x][0]), train_idx))
-Y_test = to_onehot(map(lambda x: mods.index(lbl[x][0]), test_idx))
+print(len(X_train))
+print(len(X_test))
+print(len(Y_train))
+print(len(Y_test))
 
 in_shp = list(X_train.shape[1:])
-# print X_train.shape, in_shp
-classes = mods
+print X_train.shape, X_train.shape[1:], in_shp
+classes = folders
 
 
 
@@ -103,41 +76,15 @@ classes = mods
 
 # Set up some params
 nb_epoch = 100     # number of epochs to train on
-batch_size = 1024  # training batch size
+batch_size = 32  # training batch size
 dr = 0.5 # dropout rate (%)
 
-'''
-# An update and fix for the original model
-model = models.Sequential()
-model.add(Reshape(in_shp+[1], input_shape=in_shp))
-model.add(ZeroPadding2D((0,2)))
-model.add(Conv2D(256, (1,3), activation="relu"))
-model.add(Dropout(dr))
-model.add(ZeroPadding2D((0,2)))
-model.add(Conv2D(80, (2,3), activation="relu"))
-model.add(Dropout(dr))
-model.add(Flatten())
-model.add(Dense(256, activation='relu', name="dense1"))
-model.add(Dropout(dr))
-model.add(Dense( len(classes), name="dense2" ))
-model.add(Activation('softmax'))
-model.add(Reshape([len(classes)]))
-model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
-model.summary()
-
-'''
 # build the CNN model
 model = models.Sequential()
-model.add(Reshape(in_shp+[1], input_shape=in_shp))
-model.add(ZeroPadding2D((0,2)))
-model.add(Conv2D(64, (1,4), activation="relu"))
+model.add(Conv2D(32, (3,3), input_shape=X_train.shape[1:], activation="relu"))
 model.add(Dropout(dr))
-model.add(ZeroPadding2D((0,2)))
-model.add(Conv2D(64, (2,4), activation="relu"))
-model.add(Dropout(dr))
-model.add(Conv2D(128, (1,8), activation="relu"))
-model.add(Dropout(dr))
-model.add(Conv2D(128, (1,8), activation="relu"))
+model.add(ZeroPadding2D((2,2)))
+model.add(Conv2D(64, (3,3), activation="relu"))
 model.add(Dropout(dr))
 model.add(Flatten())
 model.add(Dense(256, activation='relu'))
@@ -147,27 +94,21 @@ model.add(Reshape([len(classes)]))
 model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
 model.summary()
 
-
-
-'''
 # Train the dataset
 #  and store the weights
-filepath = 'weight_4layers.wts.h5'
-history = model.fit(X_train,
-    Y_train,
-    batch_size=batch_size,
+filepath = '4940weight.wts.h5'
+history = model.fit(X_train,Y_train,batch_size=batch_size,
     nb_epoch=nb_epoch,
     verbose=1,
     validation_data=(X_test, Y_test),
     callbacks = [
         keras.callbacks.ModelCheckpoint(filepath, monitor='val_loss', verbose=0, save_best_only=True, mode='auto'),
-        keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, verbose=0, mode='auto')
-    ])
-'''
+        keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, verbose=0, mode='auto')]
+    )
 
 
 # Re-load the best weights once training is finished
-model.load_weights('/Users/guanyuchen/Desktop/Github/RF-Signal-Model/weight_4layers.wts.h5')
+# model.load_weights(filepath)
 
 
 # Show simple version of performance
@@ -175,8 +116,6 @@ score = model.evaluate(X_test, Y_test, verbose=0, batch_size=batch_size)
 print "Validation Loss and Accuracy: ",score
 
 
-
-'''
 # Optional: show analysis graphs
 plt.figure()
 plt.title('Training performance')
@@ -254,3 +193,4 @@ plt.xlabel("Signal to Noise Ratio")
 plt.ylabel("Classification Accuracy")
 plt.title("New Model Classification Accuracy on RadioML 2016.10 Alpha")
 plt.show()
+'''
