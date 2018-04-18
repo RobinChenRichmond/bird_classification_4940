@@ -1,11 +1,11 @@
 import os,random
-os.environ["KERAS_BACKEND"] = "tensorflow"
 import math
 import numpy as np
 import matplotlib.pyplot as plt
 import random, sys, keras
 from keras.utils import np_utils
 import keras.models as models
+from keras.preprocessing.image import ImageDataGenerator
 from keras.layers.core import Reshape,Dense,Dropout,Activation,Flatten
 from keras.layers.noise import GaussianNoise
 from keras.layers.convolutional import Conv2D, MaxPooling2D, ZeroPadding2D
@@ -13,12 +13,17 @@ from keras.regularizers import *
 from keras.optimizers import adam
 from scipy.misc import imresize, imread
 from sklearn.model_selection import train_test_split
+import tensorflow as tf
+from keras.backend.tensorflow_backend import set_session
+config = tf.ConfigProto()
+config.gpu_options.allow_growth = True  # dynamically grow the memory used on the GPU
+config.log_device_placement = True
+sess = tf.Session(config=config)
+set_session(sess)  # set this TensorFlow session as the default session for Keras
 
 data = []
 label = []
-
-DIR = "/Users/guanyuchen/Desktop/Github/bird_classification_4940/bird_dataset"
-
+DIR = "/Users/guanyuchen/Desktop/Github/bird_classification_4940/Result"
 folders = os.listdir(DIR)
 
 map = {}
@@ -39,19 +44,28 @@ for foldername in folders:
             continue
         else:
             img = imread(DIR +"/" + foldername + "/" + file)
-            img = imresize(img, (140, 140))
+            img = imresize(img, (160, 160))
             data.append(img)
             label.append(map[foldername])
 
 print(len(data))
 print(len(label))
 
-X_train, X_test, Y_train, Y_test = train_test_split(data, label, test_size=0.2, shuffle=True)
+X_train, X_test, Y_train, Y_test = train_test_split(data, label, test_size=0.2, stratify=label)
+
+length = len(X_train)
+for i in xrange(length):
+  X_train.append(X_train[i][::-1])
+  Y_train.append(Y_train[i])
+
 
 X_train = np.asarray(X_train)
 X_test = np.asarray(X_test)
 Y_train = np.asarray(Y_train)
 Y_test = np.asarray(Y_test)
+
+
+
 
 Y_train = keras.utils.to_categorical(Y_train, len(folders))
 Y_test = keras.utils.to_categorical(Y_test, len(folders))
@@ -61,12 +75,6 @@ print(len(X_test))
 print(len(Y_train))
 print(len(Y_test))
 
-in_shp = list(X_train.shape[1:])
-print X_train.shape, X_train.shape[1:], in_shp
-classes = folders
-
-
-
 
 # Build the lite version VGG model using Keras primitives --
 #  - Reshape [N,2,128] to [N,1,2,128] on input
@@ -74,8 +82,11 @@ classes = folders
 #  - Pass through 2 Dense layers (ReLu and Softmax)
 #  - Perform categorical cross entropy optimization
 
+in_shp = list(X_train.shape[1:])
+print X_train.shape, X_train.shape[1:], in_shp
+classes = folders
 # Set up some params
-nb_epoch = 100     # number of epochs to train on
+nb_epoch = 150     # number of epochs to train on
 batch_size = 32  # training batch size
 dr = 0.5 # dropout rate (%)
 
@@ -83,16 +94,48 @@ dr = 0.5 # dropout rate (%)
 model = models.Sequential()
 model.add(Conv2D(32, (3,3), input_shape=X_train.shape[1:], activation="relu"))
 model.add(Dropout(dr))
-model.add(ZeroPadding2D((2,2)))
+model.add(MaxPooling2D(pool_size=(2, 2), strides=2))
+model.add(ZeroPadding2D((1,1)))
+model.add(Conv2D(32, (3,3), activation="relu"))
+model.add(Dropout(dr))
+model.add(MaxPooling2D(pool_size=(2, 2), strides=2))
+model.add(ZeroPadding2D((1,1)))
 model.add(Conv2D(64, (3,3), activation="relu"))
 model.add(Dropout(dr))
+model.add(MaxPooling2D(pool_size=(2, 2), strides=2))
+model.add(ZeroPadding2D((1,1)))
+model.add(Conv2D(64, (3,3), activation="relu"))
+model.add(Dropout(dr))
+model.add(MaxPooling2D(pool_size=(2, 2), strides=2))
 model.add(Flatten())
-model.add(Dense(256, activation='relu'))
+model.add(Dense(512, activation='relu'))
+model.add(Dropout(dr))
+model.add(Dense(512, activation='relu'))
 model.add(Dropout(dr))
 model.add(Dense(len(classes), activation='softmax'))
 model.add(Reshape([len(classes)]))
 model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
 model.summary()
+
+train_datagen = ImageDataGenerator(
+    featurewise_center=True,
+    featurewise_std_normalization=True,
+    rotation_range=20,
+    width_shift_range=0.2,
+    height_shift_range=0.2,
+    horizontal_flip=True)
+
+test_datagen = ImageDataGenerator()
+
+train_datagen.fit(X_train)
+test_datagen.fit(X_test)
+
+history = model.fit_generator(train_datagen.flow(X_train, Y_train, batch_size=batch_size),
+                    steps_per_epoch=len(X_train) / batch_size, 
+                    epochs=nb_epoch, verbose=1, 
+                    validation_data=(X_test,Y_test))
+                    #validation_data=test_datagen.flow(X_test, Y_test, batch_size=batch_size),
+                    #validation_steps=len(X_test) / batch_size)
 
 # Train the dataset
 #  and store the weights
@@ -100,11 +143,12 @@ filepath = '4940weight.wts.h5'
 history = model.fit(X_train,Y_train,batch_size=batch_size,
     nb_epoch=nb_epoch,
     verbose=1,
-    validation_data=(X_test, Y_test),
-    callbacks = [
-        keras.callbacks.ModelCheckpoint(filepath, monitor='val_loss', verbose=0, save_best_only=True, mode='auto'),
-        keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, verbose=0, mode='auto')]
-    )
+    validation_data=(X_test, Y_test))
+    #,
+    #callbacks = [
+    #    keras.callbacks.ModelCheckpoint(filepath, monitor='val_loss', verbose=0, save_best_only=True, mode='auto'),
+    #    keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, verbose=0, mode='auto')]
+    #)
 
 
 # Re-load the best weights once training is finished
@@ -123,7 +167,7 @@ plt.plot(history.epoch, history.history['loss'], label='train loss+error')
 plt.plot(history.epoch, history.history['val_loss'], label='val_error')
 plt.legend()
 plt.show()
-'''
+
 
 # helper method to plot the confusion matrix
 def plot_confusion_matrix(cm, title='Confusion matrix', cmap=plt.cm.Blues, labels=[]):
@@ -153,7 +197,7 @@ for i in range(0,len(classes)):
 plot_confusion_matrix(confnorm, labels=classes)
 
 
-
+'''
 # Accuracy and confusion matrix for data with each SNR
 acc = {}
 for snr in snrs:

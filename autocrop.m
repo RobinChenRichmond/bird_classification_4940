@@ -120,12 +120,13 @@ for aa = 3:nfolders
             leng = ymax - ymin;
 
             A = imcrop(A,[xmin ymin wid leng]);
+            A = imresize(A,[160,160]);
         end
         
         figure(1);imshow(A);
         [xvalue,yvalue,zvalue] = size(A);
         
-        filepath = fullfile('/Users/guanyuchen/Desktop/Github/bird_classification_4940/Result/',currentfoldername);
+        filepath = fullfile('/Users/guanyuchen/Desktop/Github/bird_classification_4940/Result2/',currentfoldername);
         
         %if you want to save the images in 900 by 1600 pixels
         %saveas(gca,fullfile(filepath,num2str(ii)),'jpg');
