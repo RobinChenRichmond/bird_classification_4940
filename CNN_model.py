@@ -25,7 +25,6 @@ data = []
 label = []
 DIR = "/Users/guanyuchen/Desktop/Github/bird_classification_4940/Result"
 folders = os.listdir(DIR)
-
 map = {}
 index = 0
 for foldername in folders:
@@ -44,18 +43,19 @@ for foldername in folders:
             continue
         else:
             img = imread(DIR +"/" + foldername + "/" + file)
-            img = imresize(img, (160, 160))
+            img = imresize(img, (32, 32))
             data.append(img)
             label.append(map[foldername])
 
 print(len(data))
 print(len(label))
 
-X_train, X_test, Y_train, Y_test = train_test_split(data, label, test_size=0.2, stratify=label)
-
+X_train, X_test, Y_train, Y_test = train_test_split(data, label, test_size=0.3, stratify=label, shuffle=True)
 length = len(X_train)
 for i in xrange(length):
-  X_train.append(X_train[i][::-1])
+  #X_train.append(X_train[i][::-1])
+  X_train.append(np.fliplr(X_train[i]))
+  #Y_train.append(Y_train[i])
   Y_train.append(Y_train[i])
 
 
@@ -63,10 +63,6 @@ X_train = np.asarray(X_train)
 X_test = np.asarray(X_test)
 Y_train = np.asarray(Y_train)
 Y_test = np.asarray(Y_test)
-
-
-
-
 Y_train = keras.utils.to_categorical(Y_train, len(folders))
 Y_test = keras.utils.to_categorical(Y_test, len(folders))
 
@@ -85,7 +81,6 @@ print(len(Y_test))
 in_shp = list(X_train.shape[1:])
 print X_train.shape, X_train.shape[1:], in_shp
 classes = folders
-# Set up some params
 nb_epoch = 150     # number of epochs to train on
 batch_size = 32  # training batch size
 dr = 0.5 # dropout rate (%)
@@ -93,19 +88,19 @@ dr = 0.5 # dropout rate (%)
 # build the CNN model
 model = models.Sequential()
 model.add(Conv2D(32, (3,3), input_shape=X_train.shape[1:], activation="relu"))
-model.add(Dropout(dr))
+model.add(Dropout(0.25))
 model.add(MaxPooling2D(pool_size=(2, 2), strides=2))
 model.add(ZeroPadding2D((1,1)))
 model.add(Conv2D(32, (3,3), activation="relu"))
-model.add(Dropout(dr))
+model.add(Dropout(0.25))
 model.add(MaxPooling2D(pool_size=(2, 2), strides=2))
 model.add(ZeroPadding2D((1,1)))
 model.add(Conv2D(64, (3,3), activation="relu"))
-model.add(Dropout(dr))
+model.add(Dropout(0.25))
 model.add(MaxPooling2D(pool_size=(2, 2), strides=2))
 model.add(ZeroPadding2D((1,1)))
 model.add(Conv2D(64, (3,3), activation="relu"))
-model.add(Dropout(dr))
+model.add(Dropout(0.25))
 model.add(MaxPooling2D(pool_size=(2, 2), strides=2))
 model.add(Flatten())
 model.add(Dense(512, activation='relu'))
@@ -125,17 +120,23 @@ train_datagen = ImageDataGenerator(
     height_shift_range=0.2,
     horizontal_flip=True)
 
-test_datagen = ImageDataGenerator()
-
 train_datagen.fit(X_train)
+
+test_datagen = ImageDataGenerator(
+    featurewise_center=True,
+    featurewise_std_normalization=True,
+    rotation_range=20,
+    width_shift_range=0.2,
+    height_shift_range=0.2,
+    horizontal_flip=True)
 test_datagen.fit(X_test)
 
-history = model.fit_generator(train_datagen.flow(X_train, Y_train, batch_size=batch_size),
+history = model.fit_generator(train_datagen.flow(X_train, Y_train, batch_size=batch_size, shuffle=True),
                     steps_per_epoch=len(X_train) / batch_size, 
                     epochs=nb_epoch, verbose=1, 
-                    validation_data=(X_test,Y_test))
-                    #validation_data=test_datagen.flow(X_test, Y_test, batch_size=batch_size),
-                    #validation_steps=len(X_test) / batch_size)
+                    #validation_data=(X_test,Y_test))
+                    validation_data=test_datagen.flow(X_test, Y_test, batch_size=batch_size),
+                    validation_steps=len(X_test) / batch_size)
 
 # Train the dataset
 #  and store the weights
@@ -158,8 +159,6 @@ history = model.fit(X_train,Y_train,batch_size=batch_size,
 # Show simple version of performance
 score = model.evaluate(X_test, Y_test, verbose=0, batch_size=batch_size)
 print "Validation Loss and Accuracy: ",score
-
-
 # Optional: show analysis graphs
 plt.figure()
 plt.title('Training performance')
